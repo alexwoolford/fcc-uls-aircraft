@@ -35,4 +35,10 @@ acquire_lock
 
 echo "== fcc-uls-aircraft ingest =="
 echo "bin=$BIN db=$DB"
-"$BIN" --db "$DB" ingest
+CACHE="${FCC_ULS_CACHE:-}"
+if [[ -n "$CACHE" ]]; then
+  mkdir -p "$CACHE"
+  "$BIN" --db "$DB" ingest --cache-dir "$CACHE"
+else
+  "$BIN" --db "$DB" ingest
+fi

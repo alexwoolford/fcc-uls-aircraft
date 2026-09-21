@@ -41,9 +41,10 @@ pub struct HdRow {
     pub certifier_name: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct EnRow {
     pub uls_id: String,
+    pub entity_type: String,
     pub licensee_name: Option<String>,
     pub licensee_attention: Option<String>,
     pub licensee_frn: Option<String>,
@@ -91,6 +92,15 @@ pub struct License {
     pub licensee_zip: Option<String>,
     pub licensee_po_box: Option<String>,
     pub licensee_type: Option<String>,
+    pub contact_name: Option<String>,
+    pub contact_attention: Option<String>,
+    pub contact_frn: Option<String>,
+    pub contact_street: Option<String>,
+    pub contact_city: Option<String>,
+    pub contact_state: Option<String>,
+    pub contact_zip: Option<String>,
+    pub contact_po_box: Option<String>,
+    pub contact_type: Option<String>,
 }
 
 #[derive(Debug, Default)]
@@ -276,10 +286,11 @@ fn parse_en_line(line: &str, line_number: usize, errors: &mut Vec<ParseError>) -
             return None;
         }
     };
-    let entity_type = owned(&cols, 6);
-    if entity_type.as_deref() != Some("L") {
-        return None;
-    }
+    let entity_type = match owned(&cols, 6).as_deref() {
+        Some("L") => "L".to_string(),
+        Some("CL") => "CL".to_string(),
+        _ => return None,
+    };
 
     let entity_name = owned(&cols, 8);
     let first = owned(&cols, 9);
@@ -301,6 +312,7 @@ fn parse_en_line(line: &str, line_number: usize, errors: &mut Vec<ParseError>) -
 
     Some(EnRow {
         uls_id,
+        entity_type,
         licensee_name,
         licensee_attention: if shifted { None } else { owned(&cols, 21) },
         licensee_frn: if shifted { None } else { owned(&cols, 23) },
@@ -406,18 +418,25 @@ pub fn join_licenses(
     ac: &[AcRow],
 ) -> (Vec<License>, Vec<String>, Vec<ParseError>) {
     let mut errors = Vec::new();
-    let mut en_by: HashMap<String, EnRow> = HashMap::new();
+    let mut licensee_by: HashMap<String, EnRow> = HashMap::new();
+    let mut contact_by: HashMap<String, EnRow> = HashMap::new();
     for row in en {
-        if en_by.contains_key(&row.uls_id) {
+        let dest = if row.entity_type == "CL" {
+            &mut contact_by
+        } else {
+            &mut licensee_by
+        };
+        if dest.contains_key(&row.uls_id) {
+            let kind = if row.entity_type == "CL" { "CL" } else { "L" };
             errors.push(ParseError {
                 file_name: "EN.dat".into(),
                 line_number: 0,
                 raw_line: row.uls_id.clone(),
-                error: format!("duplicate EN L for uls_id {}; first wins", row.uls_id),
+                error: format!("duplicate EN {kind} for uls_id {}; first wins", row.uls_id),
             });
             continue;
         }
-        en_by.insert(row.uls_id.clone(), row.clone());
+        dest.insert(row.uls_id.clone(), row.clone());
     }
     let mut ac_by: HashMap<String, AcRow> = HashMap::new();
     for row in ac {
@@ -462,15 +481,18 @@ pub fn join_licenses(
             });
             continue;
         };
-        let Some(en_row) = en_by.get(&row.uls_id) else {
+        let en_row = licensee_by.get(&row.uls_id);
+        if en_row.is_none() {
             errors.push(ParseError {
                 file_name: "HD.dat".into(),
                 line_number: row.line_number,
                 raw_line: row.raw_line.clone(),
                 error: format!("missing EN L for Active uls_id {}", row.uls_id),
             });
-            continue;
-        };
+        }
+        let empty = EnRow::default();
+        let licensee = en_row.unwrap_or(&empty);
+        let contact = contact_by.get(&row.uls_id);
         licenses.push(License {
             uls_id: row.uls_id.clone(),
             call_sign: row.call_sign.clone(),
@@ -487,15 +509,24 @@ pub fn join_licenses(
             aircraft_count: ac_row.aircraft_count,
             carrier_type: ac_row.carrier_type.clone(),
             certifier_name: row.certifier_name.clone(),
-            licensee_name: en_row.licensee_name.clone(),
-            licensee_attention: en_row.licensee_attention.clone(),
-            licensee_frn: en_row.licensee_frn.clone(),
-            licensee_street: en_row.licensee_street.clone(),
-            licensee_city: en_row.licensee_city.clone(),
-            licensee_state: en_row.licensee_state.clone(),
-            licensee_zip: en_row.licensee_zip.clone(),
-            licensee_po_box: en_row.licensee_po_box.clone(),
-            licensee_type: en_row.licensee_type.clone(),
+            licensee_name: licensee.licensee_name.clone(),
+            licensee_attention: licensee.licensee_attention.clone(),
+            licensee_frn: licensee.licensee_frn.clone(),
+            licensee_street: licensee.licensee_street.clone(),
+            licensee_city: licensee.licensee_city.clone(),
+            licensee_state: licensee.licensee_state.clone(),
+            licensee_zip: licensee.licensee_zip.clone(),
+            licensee_po_box: licensee.licensee_po_box.clone(),
+            licensee_type: licensee.licensee_type.clone(),
+            contact_name: contact.and_then(|c| c.licensee_name.clone()),
+            contact_attention: contact.and_then(|c| c.licensee_attention.clone()),
+            contact_frn: contact.and_then(|c| c.licensee_frn.clone()),
+            contact_street: contact.and_then(|c| c.licensee_street.clone()),
+            contact_city: contact.and_then(|c| c.licensee_city.clone()),
+            contact_state: contact.and_then(|c| c.licensee_state.clone()),
+            contact_zip: contact.and_then(|c| c.licensee_zip.clone()),
+            contact_po_box: contact.and_then(|c| c.licensee_po_box.clone()),
+            contact_type: contact.and_then(|c| c.licensee_type.clone()),
         });
     }
     let active_ids: Vec<String> = active_set.into_iter().collect();
@@ -504,6 +535,7 @@ pub fn join_licenses(
 
 pub const SAMPLE_HD_LLC: &str = "HD|2633746|0001792322||759ZD|A|AC|05/01/2024|07/02/2034||||||||||||||||||||N||Paul|A|Lange||||||||||05/01/2024|05/01/2024|||||||||||||||";
 pub const SAMPLE_EN_LLC: &str = "EN|2633746|||759ZD|L|L00641528|N759ZD, LLC c/o Law Offices of Paul A. Lange||||||||80 Ferry Boulevard|Stratford|CT|06615||Paul A. Lange|000|0011173515|L||||||";
+pub const SAMPLE_EN_CL: &str = "EN|2633746|||759ZD|CL|C00000001|Law Offices of Paul A. Lange||||||||80 Ferry Boulevard|Stratford|CT|06615||Paul A. Lange|000|0011173515|L||||||";
 pub const SAMPLE_AC_LLC: &str = "AC|2633746|||759ZD||P|N|N|759ZD";
 
 pub const SAMPLE_HD_NO_ATTN: &str = "HD|14518|||100AS|A|AC|06/02/2018|07/23/2028||||||||||||||||||||N||||||||||||||06/02/2018|06/02/2018|||||||||||||||";
@@ -558,6 +590,41 @@ mod tests {
         assert_eq!(row.grant_date.as_deref(), Some("2024-05-01"));
         assert_eq!(row.is_fleet, 0);
         assert_eq!(row.is_portable, 0);
+        assert_eq!(row.contact_name, None);
+    }
+
+    #[test]
+    fn folds_cl_contact_onto_license() {
+        let hd = parse_hd(SAMPLE_HD_LLC.as_bytes());
+        let en_text = format!("{SAMPLE_EN_LLC}\n{SAMPLE_EN_CL}");
+        let en = parse_en(en_text.as_bytes());
+        let ac = parse_ac(SAMPLE_AC_LLC.as_bytes());
+        let (lic, _, join_err) = join_licenses(&hd.records, &en.records, &ac.records);
+        assert!(join_err.is_empty());
+        assert_eq!(lic.len(), 1);
+        assert_eq!(
+            lic[0].contact_name.as_deref(),
+            Some("Law Offices of Paul A. Lange")
+        );
+        assert_eq!(lic[0].contact_attention.as_deref(), Some("Paul A. Lange"));
+        assert_eq!(lic[0].contact_city.as_deref(), Some("Stratford"));
+        assert_eq!(
+            lic[0].licensee_name.as_deref(),
+            Some("N759ZD, LLC c/o Law Offices of Paul A. Lange")
+        );
+    }
+
+    #[test]
+    fn missing_en_l_still_captures_hd_ac() {
+        let hd = parse_hd(SAMPLE_HD_LLC.as_bytes());
+        let ac = parse_ac(SAMPLE_AC_LLC.as_bytes());
+        let (lic, _, join_err) = join_licenses(&hd.records, &[], &ac.records);
+        assert_eq!(lic.len(), 1);
+        assert_eq!(lic[0].n_number.as_deref(), Some("N759ZD"));
+        assert_eq!(lic[0].licensee_name, None);
+        assert!(join_err
+            .iter()
+            .any(|e| e.error.contains("missing EN L for Active uls_id 2633746")));
     }
 
     #[test]

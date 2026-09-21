@@ -34,7 +34,7 @@ enum Command {
         #[arg(long)]
         zip: Option<PathBuf>,
         /// After an origin GET, write l_aircr.zip here for later `--zip` reruns
-        #[arg(long)]
+        #[arg(long, env = "FCC_ULS_CACHE")]
         cache_dir: Option<PathBuf>,
         /// FCC zip URL used when --zip is omitted
         #[arg(long, default_value = DEFAULT_ZIP_URL)]
@@ -51,7 +51,7 @@ enum Command {
     },
     /// Last ingest_runs row
     Status,
-    /// Licenses by N-number, call sign, FRN, or licensee name (accepts N2860C or 2860C)
+    /// Licenses by N-number, call sign, FRN, licensee/contact name, attention, or certifier (accepts N2860C or 2860C)
     Lookup { query: String },
 }
 

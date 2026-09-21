@@ -83,7 +83,7 @@ pub fn upsert_license(conn: &Connection, lic: &License) -> Result<bool> {
          ) VALUES (
             ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
             ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20,
-            ?21, ?22, ?23, ?24, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+            ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33,
             NULL
          )
          ON CONFLICT(uls_id) DO UPDATE SET
@@ -178,6 +178,15 @@ pub fn upsert_license(conn: &Connection, lic: &License) -> Result<bool> {
             lic.licensee_zip.as_deref(),
             lic.licensee_po_box.as_deref(),
             lic.licensee_type.as_deref(),
+            lic.contact_name.as_deref(),
+            lic.contact_attention.as_deref(),
+            lic.contact_frn.as_deref(),
+            lic.contact_street.as_deref(),
+            lic.contact_city.as_deref(),
+            lic.contact_state.as_deref(),
+            lic.contact_zip.as_deref(),
+            lic.contact_po_box.as_deref(),
+            lic.contact_type.as_deref(),
         ],
     )?;
     Ok(n > 0)
@@ -248,7 +257,12 @@ pub fn lookup_licenses(conn: &Connection, q: &str) -> Result<Vec<LicenseHit>> {
             OR call_sign = ?2
             OR call_sign = ?3
             OR licensee_frn = ?4
+            OR contact_frn = ?4
             OR licensee_name LIKE ?5 ESCAPE '\\'
+            OR licensee_attention LIKE ?5 ESCAPE '\\'
+            OR certifier_name LIKE ?5 ESCAPE '\\'
+            OR contact_name LIKE ?5 ESCAPE '\\'
+            OR contact_attention LIKE ?5 ESCAPE '\\'
          ORDER BY uls_id",
     )?;
     let like = like_substring(q);

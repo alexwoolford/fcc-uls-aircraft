@@ -2,8 +2,9 @@ use fcc_uls_aircraft::db::{lookup_licenses, open};
 use fcc_uls_aircraft::download::write_test_zip;
 use fcc_uls_aircraft::ingest::{ingest, IngestOptions};
 use fcc_uls_aircraft::parse::{
-    SAMPLE_AC_FLEET, SAMPLE_AC_LLC, SAMPLE_AC_NO_ATTN, SAMPLE_EN_FLEET, SAMPLE_EN_LLC,
-    SAMPLE_EN_NO_ATTN, SAMPLE_HD_EXPIRED, SAMPLE_HD_FLEET, SAMPLE_HD_LLC, SAMPLE_HD_NO_ATTN,
+    SAMPLE_AC_FLEET, SAMPLE_AC_LLC, SAMPLE_AC_NO_ATTN, SAMPLE_EN_CL, SAMPLE_EN_FLEET,
+    SAMPLE_EN_LLC, SAMPLE_EN_NO_ATTN, SAMPLE_HD_EXPIRED, SAMPLE_HD_FLEET, SAMPLE_HD_LLC,
+    SAMPLE_HD_NO_ATTN,
 };
 
 fn join_lines(lines: &[&str]) -> Vec<u8> {
@@ -88,6 +89,9 @@ fn ingest_samples_skip_expired_and_lookup() {
     let llc = lookup_licenses(&conn, "N759ZD").unwrap();
     assert_eq!(llc[0].n_number.as_deref(), Some("N759ZD"));
     assert_eq!(llc[0].call_sign, "759ZD");
+
+    let by_attn = lookup_licenses(&conn, "Paul A. Lange").unwrap();
+    assert!(by_attn.iter().any(|h| h.uls_id == "2633746"));
 
     let fleet: Option<String> = conn
         .query_row(
@@ -209,4 +213,29 @@ fn refuse_truncated_hd() {
         )
         .unwrap();
     assert_eq!(status, "failed");
+}
+
+#[test]
+fn ingest_folds_cl_contact_and_lookup() {
+    let tmp = tempfile::tempdir().unwrap();
+    let db = tmp.path().join("fcc-uls-aircraft.sqlite");
+    let bytes = zip_from(
+        &[SAMPLE_HD_LLC],
+        &[SAMPLE_EN_LLC, SAMPLE_EN_CL],
+        &[SAMPLE_AC_LLC],
+    );
+    let zip = write_zip(tmp.path(), &bytes);
+    ingest(&opts(&db, &zip, false)).unwrap();
+    let conn = open(&db).unwrap();
+    let contact: Option<String> = conn
+        .query_row(
+            "SELECT contact_name FROM licenses WHERE uls_id = '2633746'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(contact.as_deref(), Some("Law Offices of Paul A. Lange"));
+    let hits = lookup_licenses(&conn, "Law Offices of Paul A. Lange").unwrap();
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].uls_id, "2633746");
 }

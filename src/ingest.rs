@@ -168,7 +168,6 @@ pub fn ingest(opts: &IngestOptions) -> Result<IngestStats> {
     let (licenses, active_ids, join_errors) = join_licenses(&hd.records, &en.records, &ac.records);
     parse_errors.extend(join_errors);
 
-    let ingest_id = insert_run_start(&work, &as_of, &started_at, &source, &zip_hash)?;
     let mut stats = IngestStats {
         source: source.clone(),
         zip_hash: zip_hash.clone(),
@@ -180,12 +179,18 @@ pub fn ingest(opts: &IngestOptions) -> Result<IngestStats> {
         ..IngestStats::default()
     };
 
-    match apply_licenses(&mut work, ingest_id, &licenses, &active_ids, &parse_errors) {
-        Ok((upserted, unchanged, retracted)) => {
-            stats.active_upserted = upserted;
-            stats.unchanged_rows = unchanged;
-            stats.retracted = retracted;
-            finish_run(&work, ingest_id, "ok", &stats, None)?;
+    match apply_licenses(
+        &mut work,
+        &as_of,
+        &started_at,
+        &source,
+        &zip_hash,
+        &licenses,
+        &active_ids,
+        &parse_errors,
+        &mut stats,
+    ) {
+        Ok(()) => {
             work.nudge.send();
             tracing::info!(
                 zip_hash = %zip_hash,
@@ -200,21 +205,38 @@ pub fn ingest(opts: &IngestOptions) -> Result<IngestStats> {
             Ok(stats)
         }
         Err(err) => {
-            let _ = finish_run(&work, ingest_id, "failed", &stats, Some(&err.to_string()));
+            let _ = record_failed_run(
+                &work,
+                &as_of,
+                &started_at,
+                &source,
+                &zip_hash,
+                stats.hd_rows,
+                stats.en_rows,
+                stats.ac_rows,
+                stats.parse_errors,
+                &err.to_string(),
+            );
             work.nudge.send();
             Err(err)
         }
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn apply_licenses(
     work: &mut crate::db::WorkDb,
-    ingest_id: i64,
+    as_of: &str,
+    started_at: &str,
+    source: &str,
+    zip_hash: &str,
     licenses: &[License],
     active_ids: &[String],
     parse_errors: &[ParseError],
-) -> Result<(usize, usize, usize)> {
+    stats: &mut IngestStats,
+) -> Result<()> {
     let tx = work.transaction().context("begin ingest transaction")?;
+    let ingest_id = insert_run_start(&tx, as_of, started_at, source, zip_hash)?;
     let mut upserted = 0usize;
     let mut unchanged = 0usize;
     for lic in licenses {
@@ -224,10 +246,13 @@ fn apply_licenses(
             unchanged += 1;
         }
     }
-    let retracted = retract_missing(&tx, active_ids)?;
+    stats.active_upserted = upserted;
+    stats.unchanged_rows = unchanged;
+    stats.retracted = retract_missing(&tx, active_ids)?;
     insert_parse_errors(&tx, ingest_id, parse_errors)?;
+    finish_run(&tx, ingest_id, "ok", stats, None)?;
     tx.commit().context("commit ingest")?;
-    Ok((upserted, unchanged, retracted))
+    Ok(())
 }
 
 fn retract_missing(tx: &Transaction<'_>, active_ids: &[String]) -> Result<usize> {
