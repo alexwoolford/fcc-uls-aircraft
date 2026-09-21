@@ -1,0 +1,12 @@
+[Unit]
+Description=FCC ULS Part 87 aircraft radio ingest
+Documentation=file:///opt/fcc-uls-aircraft/docs/DAILY_OPS.md
+
+[Timer]
+OnCalendar=Sun *-*-* 12:00:00 UTC
+Persistent=true
+RandomizedDelaySec=15m
+Unit=fcc-uls-aircraft-ingest.service
+
+[Install]
+WantedBy=timers.target

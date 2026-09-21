@@ -1,0 +1,8 @@
+/target
+/data
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+l_aircr.zip
+.env
+.DS_Store

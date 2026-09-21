@@ -1,0 +1,21 @@
+[Unit]
+Description=FCC ULS Part 87 aircraft radio ingest
+Documentation=file:///opt/fcc-uls-aircraft/docs/DAILY_OPS.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=fcc
+Group=fcc
+Nice=10
+EnvironmentFile=-/opt/fcc-uls-aircraft/etc/fcc-uls-aircraft.env
+WorkingDirectory=/opt/fcc-uls-aircraft
+ExecStart=/opt/fcc-uls-aircraft/scripts/run-ingest.sh
+TimeoutStartSec=1h
+SyslogIdentifier=fcc-uls-aircraft-ingest
+ReadWritePaths=/var/lib/fcc-uls-aircraft /var/lib/state-capture/announce -/run/state
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
