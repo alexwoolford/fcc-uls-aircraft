@@ -19,6 +19,8 @@ Operator logs: `tracing` on stderr → journald (`SyslogIdentifier=fcc-uls-aircr
 
 No published `current/`. Do not copy a laptop sqlite onto the host. Do not send `FAA_USER_AGENT` to FCC.
 
+After a successful ingest the work sqlite is mode **644** so `tails` can read `licensee_name` for `fcc_licensee_exact`. Do not GET `l_aircr.zip` from tail-to-ticker.
+
 ## Install
 
 ```bash

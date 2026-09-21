@@ -42,3 +42,7 @@ if [[ -n "$CACHE" ]]; then
 else
   "$BIN" --db "$DB" ingest
 fi
+# tails (tail-to-ticker) reads this work sqlite RO. Public ULS labels.
+if [[ -f "$DB" ]]; then
+  chmod 0644 "$DB"
+fi
