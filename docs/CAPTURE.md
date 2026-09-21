@@ -17,7 +17,7 @@ Pin: `capturable-state` git tag `v0.1.1` (not a path dep; do not copy `src/*.rs`
 | Other ULS `.dat` / Form 603 | **no** | — | Not the capture set |
 | `_outbox` | platform | — | Generated |
 
-Identity: `uls_id`. Do **not** put `ingest_id` on `licenses` (weekly rewrite would hose `_outbox`). Identical live rows emit no extra outbox `U` (`ON CONFLICT … WHERE` any captured fact differs **or** `deleted_at IS NOT NULL`). Returning licenses clear `deleted_at`. Retract: `deleted_at = CAST(strftime('%s','now') AS INTEGER)` where the `uls_id` is not in this week’s Active HD set. No `DELETE`.
+Identity: `uls_id`. Do **not** put `ingest_id` on `licenses` (weekly rewrite would hose `_outbox`). Identical live rows emit no extra outbox `U` (`ON CONFLICT … WHERE` any captured fact differs **or** `deleted_at IS NOT NULL`). Returning licenses clear `deleted_at`. Retract: `deleted_at = CAST(strftime('%s','now') AS INTEGER)` where the `uls_id` is not in this week’s **captured** Active HD+AC set (missing AC is not a keep). No `DELETE`.
 
 `n_number` is canonical (leading `N`) from `AC.n_number`. Blank fleet/portable → NULL. Do not guess from `call_sign`. EN `L` folds onto `licensee_*`; EN `CL` folds onto `contact_*` (this dump currently has zero CL rows). Missing EN `L` still captures HD+AC with NULL licensee fields and a `parse_errors` row. These are **labels**, not a name-match score.
 

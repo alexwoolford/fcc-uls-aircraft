@@ -1,6 +1,6 @@
 //! Pipe-delimited FCC ULS `.dat` rows. 1-based fields; extra trailing columns tolerated.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use chrono::NaiveDate;
 
@@ -411,7 +411,7 @@ fn parse_file<T>(
     DatParse { records, errors }
 }
 
-/// Join HD–AC–EN. Capture HD status `A` only.
+/// Join HD–AC–EN. Capture HD status `A` with AC only. Retract keep-set is those captured ids.
 pub fn join_licenses(
     hd: &[HdRow],
     en: &[EnRow],
@@ -454,11 +454,7 @@ pub fn join_licenses(
 
     let mut seen_hd: HashMap<String, ()> = HashMap::new();
     let mut licenses = Vec::new();
-    let mut active_set = HashSet::new();
     for row in hd {
-        if row.license_status == "A" {
-            active_set.insert(row.uls_id.clone());
-        }
         if seen_hd.contains_key(&row.uls_id) {
             errors.push(ParseError {
                 file_name: "HD.dat".into(),
@@ -529,7 +525,7 @@ pub fn join_licenses(
             contact_type: contact.and_then(|c| c.licensee_type.clone()),
         });
     }
-    let active_ids: Vec<String> = active_set.into_iter().collect();
+    let active_ids: Vec<String> = licenses.iter().map(|l| l.uls_id.clone()).collect();
     (licenses, active_ids, errors)
 }
 
@@ -547,6 +543,14 @@ pub const SAMPLE_HD_EXPIRED: &str = "HD|14459|||10007|E|AC|09/22/1994|09/18/2004
 pub const SAMPLE_HD_FLEET: &str = "HD|999001|||FLEET1|A|AC|01/01/2024|01/01/2034||||||||||||||||||||N||||||||||||||01/01/2024|01/01/2024|||||||||||||||";
 pub const SAMPLE_EN_FLEET: &str = "EN|999001|||FLEET1|L|L00000001|FLEET LICENSEE LLC||||||||1 MAIN|ANYTOWN|CT|00000|||000|0010000001|C||||||";
 pub const SAMPLE_AC_FLEET: &str = "AC|999001|||FLEET1||P|N|Y|";
+
+pub const SAMPLE_HD_N191CS_A: &str = "HD|2999119|0001792322||191CS|A|AC|05/01/2024|07/02/2034||||||||||||||||||||N||Paul|A|Lange||||||||||05/01/2024|05/01/2024|||||||||||||||";
+pub const SAMPLE_EN_N191CS_A: &str = "EN|2999119|||191CS|L|L00641528|N191CS HOLDER A LLC||||||||80 Ferry Boulevard|Stratford|CT|06615||Paul A. Lange|000|0011173515|L||||||";
+pub const SAMPLE_AC_N191CS_A: &str = "AC|2999119|||191CS||P|N|N|191CS";
+
+pub const SAMPLE_HD_N191CS_B: &str = "HD|4100304|0001792323||191CS|A|AC|06/01/2025|07/02/2035||||||||||||||||||||N||Paul|A|Lange||||||||||06/01/2025|06/01/2025|||||||||||||||";
+pub const SAMPLE_EN_N191CS_B: &str = "EN|4100304|||191CS|L|L00641529|N191CS HOLDER B LLC||||||||80 Ferry Boulevard|Stratford|CT|06615||Paul A. Lange|000|0011173516|L||||||";
+pub const SAMPLE_AC_N191CS_B: &str = "AC|4100304|||191CS||P|N|N|191CS";
 
 #[cfg(test)]
 mod tests {
@@ -625,6 +629,33 @@ mod tests {
         assert!(join_err
             .iter()
             .any(|e| e.error.contains("missing EN L for Active uls_id 2633746")));
+    }
+
+    #[test]
+    fn missing_ac_is_not_in_retract_keep_set() {
+        let hd = parse_hd(SAMPLE_HD_LLC.as_bytes());
+        let en = parse_en(SAMPLE_EN_LLC.as_bytes());
+        let (lic, active, join_err) = join_licenses(&hd.records, &en.records, &[]);
+        assert!(lic.is_empty());
+        assert!(active.is_empty());
+        assert!(join_err
+            .iter()
+            .any(|e| e.error.contains("missing AC for Active uls_id 2633746")));
+    }
+
+    #[test]
+    fn two_active_uls_ids_can_share_canonical_n() {
+        let hd = parse_hd(format!("{SAMPLE_HD_N191CS_A}\n{SAMPLE_HD_N191CS_B}").as_bytes());
+        let en = parse_en(format!("{SAMPLE_EN_N191CS_A}\n{SAMPLE_EN_N191CS_B}").as_bytes());
+        let ac = parse_ac(format!("{SAMPLE_AC_N191CS_A}\n{SAMPLE_AC_N191CS_B}").as_bytes());
+        let (lic, active, join_err) = join_licenses(&hd.records, &en.records, &ac.records);
+        assert!(join_err.is_empty());
+        assert_eq!(lic.len(), 2);
+        assert_eq!(active.len(), 2);
+        assert!(lic.iter().all(|r| r.n_number.as_deref() == Some("N191CS")));
+        let ids: Vec<&str> = lic.iter().map(|r| r.uls_id.as_str()).collect();
+        assert!(ids.contains(&"2999119"));
+        assert!(ids.contains(&"4100304"));
     }
 
     #[test]

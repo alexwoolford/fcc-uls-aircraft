@@ -2,9 +2,10 @@ use fcc_uls_aircraft::db::{lookup_licenses, open};
 use fcc_uls_aircraft::download::write_test_zip;
 use fcc_uls_aircraft::ingest::{ingest, IngestOptions};
 use fcc_uls_aircraft::parse::{
-    SAMPLE_AC_FLEET, SAMPLE_AC_LLC, SAMPLE_AC_NO_ATTN, SAMPLE_EN_CL, SAMPLE_EN_FLEET,
-    SAMPLE_EN_LLC, SAMPLE_EN_NO_ATTN, SAMPLE_HD_EXPIRED, SAMPLE_HD_FLEET, SAMPLE_HD_LLC,
-    SAMPLE_HD_NO_ATTN,
+    SAMPLE_AC_FLEET, SAMPLE_AC_LLC, SAMPLE_AC_N191CS_A, SAMPLE_AC_N191CS_B, SAMPLE_AC_NO_ATTN,
+    SAMPLE_EN_CL, SAMPLE_EN_FLEET, SAMPLE_EN_LLC, SAMPLE_EN_N191CS_A, SAMPLE_EN_N191CS_B,
+    SAMPLE_EN_NO_ATTN, SAMPLE_HD_EXPIRED, SAMPLE_HD_FLEET, SAMPLE_HD_LLC, SAMPLE_HD_N191CS_A,
+    SAMPLE_HD_N191CS_B, SAMPLE_HD_NO_ATTN,
 };
 
 fn join_lines(lines: &[&str]) -> Vec<u8> {
@@ -238,4 +239,83 @@ fn ingest_folds_cl_contact_and_lookup() {
     let hits = lookup_licenses(&conn, "Law Offices of Paul A. Lange").unwrap();
     assert_eq!(hits.len(), 1);
     assert_eq!(hits[0].uls_id, "2633746");
+}
+
+#[test]
+fn missing_ac_retracts_previously_captured_license() {
+    let tmp = tempfile::tempdir().unwrap();
+    let db = tmp.path().join("fcc-uls-aircraft.sqlite");
+    let with_ac = zip_from(&[SAMPLE_HD_LLC], &[SAMPLE_EN_LLC], &[SAMPLE_AC_LLC]);
+    let zip = write_zip(tmp.path(), &with_ac);
+    ingest(&opts(&db, &zip, false)).unwrap();
+
+    let without_ac = zip_from(&[SAMPLE_HD_LLC], &[SAMPLE_EN_LLC], &[]);
+    std::fs::write(&zip, without_ac).unwrap();
+    let stats = ingest(&opts(&db, &zip, false)).unwrap();
+    assert_eq!(stats.active_upserted, 0);
+    assert_eq!(stats.retracted, 1);
+    assert!(stats.parse_errors >= 1);
+
+    let conn = open(&db).unwrap();
+    let deleted: Option<i64> = conn
+        .query_row(
+            "SELECT deleted_at FROM licenses WHERE uls_id = '2633746'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(deleted.is_some() && deleted.unwrap() > 0);
+}
+
+#[test]
+fn restore_after_retract_clears_deleted_at() {
+    let tmp = tempfile::tempdir().unwrap();
+    let db = tmp.path().join("fcc-uls-aircraft.sqlite");
+    let both = zip_from(
+        &[SAMPLE_HD_LLC, SAMPLE_HD_NO_ATTN],
+        &[SAMPLE_EN_LLC, SAMPLE_EN_NO_ATTN],
+        &[SAMPLE_AC_LLC, SAMPLE_AC_NO_ATTN],
+    );
+    let zip = write_zip(tmp.path(), &both);
+    ingest(&opts(&db, &zip, false)).unwrap();
+
+    let only_llc = zip_from(&[SAMPLE_HD_LLC], &[SAMPLE_EN_LLC], &[SAMPLE_AC_LLC]);
+    std::fs::write(&zip, &only_llc).unwrap();
+    ingest(&opts(&db, &zip, false)).unwrap();
+
+    std::fs::write(&zip, both).unwrap();
+    let stats = ingest(&opts(&db, &zip, false)).unwrap();
+    assert_eq!(stats.retracted, 0);
+    assert_eq!(stats.active_upserted, 1);
+    assert_eq!(stats.unchanged_rows, 1);
+
+    let conn = open(&db).unwrap();
+    let deleted: Option<i64> = conn
+        .query_row(
+            "SELECT deleted_at FROM licenses WHERE uls_id = '14518'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(deleted, None);
+}
+
+#[test]
+fn two_uls_ids_same_canonical_n_number() {
+    let tmp = tempfile::tempdir().unwrap();
+    let db = tmp.path().join("fcc-uls-aircraft.sqlite");
+    let bytes = zip_from(
+        &[SAMPLE_HD_N191CS_A, SAMPLE_HD_N191CS_B],
+        &[SAMPLE_EN_N191CS_A, SAMPLE_EN_N191CS_B],
+        &[SAMPLE_AC_N191CS_A, SAMPLE_AC_N191CS_B],
+    );
+    let zip = write_zip(tmp.path(), &bytes);
+    ingest(&opts(&db, &zip, false)).unwrap();
+    let conn = open(&db).unwrap();
+    let hits = lookup_licenses(&conn, "N191CS").unwrap();
+    assert_eq!(hits.len(), 2);
+    let ids: Vec<&str> = hits.iter().map(|h| h.uls_id.as_str()).collect();
+    assert!(ids.contains(&"2999119"));
+    assert!(ids.contains(&"4100304"));
+    assert!(hits.iter().all(|h| h.n_number.as_deref() == Some("N191CS")));
 }
