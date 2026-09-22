@@ -2,7 +2,7 @@
 
 use chrono::{DateTime, Utc};
 
-pub const INSTANT_FMT: &str = "%Y-%m-%dT%H:%M:%SZ";
+pub(crate) const INSTANT_FMT: &str = "%Y-%m-%dT%H:%M:%SZ";
 
 pub fn utc_iso(dt: DateTime<Utc>) -> String {
     dt.format(INSTANT_FMT).to_string()

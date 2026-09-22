@@ -6,7 +6,7 @@ use anyhow::{bail, Context, Result};
 use rusqlite::{params, Connection, Transaction};
 
 use crate::db::{open_work, upsert_license};
-use crate::download::{self, DEFAULT_ZIP_URL};
+use crate::download;
 use crate::parse::{join_licenses, parse_ac, parse_en, parse_hd, License, ParseError};
 use crate::time::{require_utc_date, require_utc_instant, utc_date, utc_iso};
 
@@ -21,20 +21,6 @@ pub struct IngestOptions {
     pub min_hd_rows: usize,
     pub force: bool,
     pub user_agent: String,
-}
-
-impl Default for IngestOptions {
-    fn default() -> Self {
-        Self {
-            db_path: std::path::PathBuf::from("data/fcc-uls-aircraft.sqlite"),
-            zip_path: None,
-            cache_dir: None,
-            zip_url: DEFAULT_ZIP_URL.to_string(),
-            min_hd_rows: DEFAULT_MIN_HD_ROWS,
-            force: false,
-            user_agent: crate::download::DEFAULT_FCC_USER_AGENT.to_string(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Default)]

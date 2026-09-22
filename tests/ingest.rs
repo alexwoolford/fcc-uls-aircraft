@@ -123,10 +123,27 @@ fn ingest_samples_skip_expired_and_lookup() {
         .unwrap();
     assert_eq!(skip_status, "skipped");
 
+    let license_outbox_before: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM _outbox WHERE tbl = 'licenses'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+
     let forced = ingest(&opts(&db, &zip, true)).unwrap();
     assert!(!forced.skipped_same_zip);
     assert_eq!(forced.unchanged_rows, 3);
     assert_eq!(forced.active_upserted, 0);
+
+    let license_outbox_after: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM _outbox WHERE tbl = 'licenses'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(license_outbox_before, license_outbox_after);
 }
 
 #[test]

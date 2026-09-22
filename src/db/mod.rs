@@ -284,11 +284,6 @@ pub fn lookup_licenses(conn: &Connection, q: &str) -> Result<Vec<LicenseHit>> {
     Ok(out)
 }
 
-pub fn outbox_count(conn: &Connection) -> Result<i64> {
-    conn.query_row("SELECT COUNT(*) FROM _outbox", [], |r| r.get(0))
-        .context("outbox count")
-}
-
 fn like_substring(q: &str) -> String {
     let mut out = String::from("%");
     for c in q.chars() {

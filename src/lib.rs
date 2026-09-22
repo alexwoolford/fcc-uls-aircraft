@@ -10,4 +10,4 @@ pub mod time;
 pub use db::{open, open_work, WorkDb, DB_NAME};
 pub use ingest::{ingest, IngestOptions, IngestStats, DEFAULT_MIN_HD_ROWS};
 pub use parse::canonical_n_number;
-pub use time::{utc_iso, INSTANT_FMT};
+pub use time::utc_iso;
